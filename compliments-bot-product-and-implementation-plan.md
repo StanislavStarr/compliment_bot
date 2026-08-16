@@ -595,8 +595,7 @@ class AIProvider(Protocol):
     async def generate_message(
         self,
         request: GenerationRequest,
-    ) -> GeneratedMessage:
-        ...
+    ) -> GeneratedMessage: ...
 ```
 
 SDK провайдера не импортируется вне `infrastructure/ai/providers`.

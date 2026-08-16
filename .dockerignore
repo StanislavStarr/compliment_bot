@@ -1,0 +1,14 @@
+.venv/
+.git/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+tests/
+docs/
+compliments-bot-product-and-implementation-plan.md
+README.md
