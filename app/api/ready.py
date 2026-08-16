@@ -17,6 +17,7 @@ async def ready(response: Response) -> dict[str, Any]:
     try:
         async with get_engine().connect() as conn:
             await conn.execute(text("SELECT 1"))
+            await conn.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
         checks["postgres"] = "ok"
     except Exception as exc:  # noqa: BLE001
         checks["postgres"] = f"error: {exc.__class__.__name__}"
