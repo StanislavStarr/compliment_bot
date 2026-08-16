@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# venv
+.venv/
+venv/
+
+# uv
+uv.lock.bak
+
+# Env files
+.env
+.env.dev
+.env.prod
+!.env.example
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Docker volumes (local data)
+pgdata/
+redisdata/
+
+# Logs
+*.log
