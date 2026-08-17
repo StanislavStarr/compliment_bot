@@ -141,6 +141,18 @@ docker compose run --rm migrate alembic current
 
 После `--autogenerate` всегда открыть файл в `app/infrastructure/db/migrations/versions/` и проверить сгенерированный `upgrade()`/`downgrade()` — автогенерация не видит переименования колонок и не расставляет data-миграции.
 
+## AI-генерация
+
+Пайплайн описан в `app/application/generation/service.py` (`GenerationService.generate`).
+`OpenAIProvider` — единственное место, где импортируется SDK `openai` (`app/infrastructure/ai/providers/openai_provider.py`), вызывает `client.responses.parse(..., text_format=AIMessageSchema)`.
+
+Проверить, что связь с OpenAI работает (ровно один запрос):
+
+```bash
+# заполнить OPENAI_API_KEY в .env, затем
+uv run python scripts/check_openai_connection.py
+```
+
 ## Статус
 
 Разработка ведётся поэтапно по плану из раздела «19. План разработки по этапам» продуктового документа.
@@ -150,4 +162,5 @@ docker compose run --rm migrate alembic current
 - ✅ Этап 1. FastAPI health/ready, Celery + Beat, логирование.
 - ✅ Этап 2. Схема БД, миграции, репозитории, калькулятор расписания.
 - ✅ Этап 3. Telegram-бот и онбординг: FSM на 12 шагов с сохранением каждого ответа сразу в БД, восстановление после `/start`, резюме анкеты и редактирование по разделам. FSM-хранилище — Redis (`fsm_storage_db`), переживает перезапуск бота.
-- ⏳ Этап 4. AI-генерация сообщений — далее.
+- ✅ Этап 4. AI-генерация сообщений: `AIProvider`/`OpenAIProvider` через Responses API со structured output, prompt builder (system + user, с защитой от prompt injection), локальный валидатор (длина, язык, эмодзи, приветствия, советы, тема/тип, semantic_key), защита от повторов (exact/close match + semantic_key), `GenerationService` — round-robin тем/типов, сбор обезличенного контекста, один повтор при нарушении, fallback из `fallback_messages`. Персист в `generated_messages`/`deliveries` и Celery-обвязка — Этап 5.
+- ⏳ Этап 5. Планировщик и доставка сообщений — далее.
