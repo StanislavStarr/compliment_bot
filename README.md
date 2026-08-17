@@ -13,7 +13,8 @@ Python 3.12, aiogram 3.x, FastAPI, SQLAlchemy (async) + Alembic, PostgreSQL, Red
 
 ```text
 app/
-  main.py                 # точка входа FastAPI + запуск aiogram polling
+  main.py                 # точка входа FastAPI (health/ready)
+  bot_main.py               # точка входа Telegram-бота (aiogram polling)
   config.py                # конфиг на Pydantic Settings
 
   domain/                  # сущности и бизнес-правила, без внешних зависимостей
@@ -59,7 +60,7 @@ uv run pre-commit install
 
 ## Docker Compose
 
-Стек: `postgres`, `redis`, `migrate` (одноразовый — накатывает миграции и завершается), `app` (FastAPI), `worker` (Celery worker), `beat` (Celery Beat). `app`/`worker`/`beat` стартуют только после успешного завершения `migrate`.
+Стек: `postgres`, `redis`, `migrate` (одноразовый — накатывает миграции и завершается), `app` (FastAPI), `bot` (Telegram polling), `worker` (Celery worker), `beat` (Celery Beat). `app`/`bot`/`worker`/`beat` стартуют только после успешного завершения `migrate`.
 
 ```bash
 # собрать образы и поднять весь стек в фоне
@@ -73,6 +74,7 @@ docker compose ps
 
 # логи (добавить -f для follow)
 docker compose logs app
+docker compose logs bot
 docker compose logs worker
 docker compose logs beat
 docker compose logs migrate
@@ -143,3 +145,9 @@ docker compose run --rm migrate alembic current
 
 Разработка ведётся поэтапно по плану из раздела «19. План разработки по этапам» продуктового документа.
 Первый проход реализации — Gift Release (без invite-кодов, ролей и admin-команд).
+
+- ✅ Этап 0. Репозиторий, tooling, Docker Compose.
+- ✅ Этап 1. FastAPI health/ready, Celery + Beat, логирование.
+- ✅ Этап 2. Схема БД, миграции, репозитории, калькулятор расписания.
+- ✅ Этап 3. Telegram-бот и онбординг: FSM на 12 шагов с сохранением каждого ответа сразу в БД, восстановление после `/start`, резюме анкеты и редактирование по разделам. FSM-хранилище — Redis (`fsm_storage_db`), переживает перезапуск бота.
+- ⏳ Этап 4. AI-генерация сообщений — далее.

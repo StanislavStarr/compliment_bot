@@ -22,6 +22,7 @@ class OnboardingStep(StrEnum):
     BLOCKED_TOPICS = "blocked_topics"
     STYLE_EXAMPLES = "style_examples"
     TIMEZONE = "timezone"
-    SCHEDULE = "schedule"
+    SCHEDULE_MODE = "schedule_mode"
+    SCHEDULE_TIME = "schedule_time"
     SUMMARY = "summary"
     DONE = "done"

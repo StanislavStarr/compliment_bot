@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     redis_db: int = 0
     celery_broker_db: int = 1
     celery_result_backend_db: int = 2
+    fsm_storage_db: int = 3
 
     openai_api_key: SecretStr = SecretStr("")
     openai_model: str = "gpt-4o-mini"
@@ -69,6 +70,11 @@ class Settings(BaseSettings):
     @property
     def celery_result_backend(self) -> str:
         return f"redis://{self.redis_host}:{self.redis_port}/{self.celery_result_backend_db}"
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def fsm_storage_url(self) -> str:
+        return f"redis://{self.redis_host}:{self.redis_port}/{self.fsm_storage_db}"
 
 
 @lru_cache

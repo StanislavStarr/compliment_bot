@@ -54,6 +54,19 @@ services:
       redis:
         condition: service_healthy
 
+  bot:
+    build: .
+    command: ["python", "-m", "app.bot_main"]
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
   worker:
     build: .
     command: ["celery", "-A", "app.infrastructure.tasks.celery_app", "worker", "--loglevel=info"]
