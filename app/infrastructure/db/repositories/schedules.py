@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, datetime, time
+from datetime import UTC, date, datetime, time
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,4 +46,23 @@ class ScheduleRepository:
     ) -> None:
         schedule.last_sent_local_date = local_date
         schedule.next_run_at_utc = next_run_at_utc
+        await self._session.flush()
+
+    async def lock_due_batch(self, now_utc: datetime, limit: int) -> list[Schedule]:
+        """`FOR UPDATE SKIP LOCKED` — несколько worker-процессов (при
+        масштабировании) не возьмут одно и то же расписание одновременно.
+        Не продвигает `next_run_at_utc` — это делает delivery-таск после
+        завершения доставки (раздел 17 плана)."""
+        result = await self._session.execute(
+            select(Schedule)
+            .where(Schedule.is_active.is_(True), Schedule.next_run_at_utc <= now_utc)
+            .order_by(Schedule.next_run_at_utc)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+        return list(result.scalars().all())
+
+    async def pause(self, schedule: Schedule) -> None:
+        schedule.is_active = False
+        schedule.paused_at = datetime.now(UTC)
         await self._session.flush()

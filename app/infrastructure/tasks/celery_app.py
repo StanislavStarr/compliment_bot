@@ -8,7 +8,10 @@ celery_app = Celery(
     "compliment_bot",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["app.infrastructure.tasks.scheduler"],
+    include=[
+        "app.infrastructure.tasks.delivery",
+        "app.infrastructure.tasks.scheduler",
+    ],
 )
 
 celery_app.conf.update(

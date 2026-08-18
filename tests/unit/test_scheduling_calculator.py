@@ -2,11 +2,14 @@ import random
 from datetime import UTC, datetime, time
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from app.application.scheduling.calculator import (
+    compute_next_run,
     compute_next_run_for_exact_time,
     compute_next_run_for_period,
 )
-from app.domain.schedules.enums import Period
+from app.domain.schedules.enums import Period, ScheduleMode
 
 HO_CHI_MINH = ZoneInfo("Asia/Ho_Chi_Minh")
 
@@ -50,3 +53,36 @@ def test_period_rolls_over_when_window_already_passed_today() -> None:
 
     assert local.date().isoformat() == "2026-01-06"
     assert 7 <= local.hour < 11
+
+
+def test_compute_next_run_dispatches_to_exact_time() -> None:
+    now_utc = datetime(2026, 1, 5, 10, 0, tzinfo=UTC)
+
+    result = compute_next_run(now_utc, "Asia/Ho_Chi_Minh", ScheduleMode.EXACT, time(18, 0), None)
+
+    assert result == compute_next_run_for_exact_time(now_utc, "Asia/Ho_Chi_Minh", time(18, 0))
+
+
+def test_compute_next_run_dispatches_to_period() -> None:
+    now_utc = datetime(2026, 1, 5, 0, 0, tzinfo=UTC)
+
+    result = compute_next_run(
+        now_utc, "Asia/Ho_Chi_Minh", ScheduleMode.PERIOD, None, Period.MORNING, random.Random(42)
+    )
+    local = result.astimezone(HO_CHI_MINH)
+
+    assert 7 <= local.hour < 11
+
+
+def test_compute_next_run_requires_exact_local_time_for_exact_mode() -> None:
+    now_utc = datetime(2026, 1, 5, 10, 0, tzinfo=UTC)
+
+    with pytest.raises(ValueError, match="exact_local_time"):
+        compute_next_run(now_utc, "Asia/Ho_Chi_Minh", ScheduleMode.EXACT, None, None)
+
+
+def test_compute_next_run_requires_period_for_period_mode() -> None:
+    now_utc = datetime(2026, 1, 5, 10, 0, tzinfo=UTC)
+
+    with pytest.raises(ValueError, match="period"):
+        compute_next_run(now_utc, "Asia/Ho_Chi_Minh", ScheduleMode.PERIOD, None, None)

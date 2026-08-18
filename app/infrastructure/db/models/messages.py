@@ -51,6 +51,7 @@ class GeneratedMessage(Base, UUIDPkMixin):
 
     input_tokens: Mapped[int | None] = mapped_column(Integer)
     output_tokens: Mapped[int | None] = mapped_column(Integer)
+    total_tokens: Mapped[int | None] = mapped_column(Integer)
     estimated_cost: Mapped[float | None] = mapped_column(Numeric(10, 6))
     validation_status: Mapped[str | None] = mapped_column(String(32))
 

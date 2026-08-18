@@ -1,14 +1,10 @@
-import random
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, time
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.application.scheduling.calculator import (
-    compute_next_run_for_exact_time,
-    compute_next_run_for_period,
-)
+from app.application.scheduling.calculator import compute_next_run
 from app.domain.profiles.constants import SUPPORT_PREFERENCE_OPTIONS
 from app.domain.schedules.enums import Period, ScheduleMode
 from app.domain.users.enums import AddressMode, OnboardingStep, UserStatus
@@ -141,18 +137,7 @@ class OnboardingService:
         period: Period | None = None,
     ) -> None:
         now_utc = datetime.now(UTC)
-        if mode is ScheduleMode.EXACT:
-            if exact_local_time is None:
-                raise ValueError("exact_local_time обязателен для режима EXACT")
-            next_run_at_utc = compute_next_run_for_exact_time(
-                now_utc, timezone_name, exact_local_time
-            )
-        else:
-            if period is None:
-                raise ValueError("period обязателен для режима PERIOD")
-            next_run_at_utc = compute_next_run_for_period(
-                now_utc, timezone_name, period, random.Random()
-            )
+        next_run_at_utc = compute_next_run(now_utc, timezone_name, mode, exact_local_time, period)
 
         await self.schedules.upsert(
             user_id=user.id,

@@ -39,4 +39,5 @@ class OpenAIProvider:
             model=self._model,
             input_tokens=usage.input_tokens if usage else None,
             output_tokens=usage.output_tokens if usage else None,
+            total_tokens=usage.total_tokens if usage else None,
         )

@@ -50,6 +50,7 @@ class GenerationOutcome:
     model: str | None
     input_tokens: int | None
     output_tokens: int | None
+    total_tokens: int | None
     prompt_version: str | None
     validation_status: str
 
@@ -76,21 +77,23 @@ class GenerationService:
         self.fallback_messages = FallbackMessageRepository(session)
 
     async def generate(self, user: User) -> GenerationOutcome:
+        """Удобный вариант "всегда успешен" — сам решает AI vs fallback.
+        Использовать вне delivery-таска (ручная проверка, будущие admin-сценарии).
+        Delivery-таск (Этап 5) вызывает `generate_via_ai_or_raise` и
+        `generate_fallback_only` по отдельности, чтобы техническая ошибка
+        провайдера могла ретраиться на уровне Celery, а не тонуть здесь."""
+        try:
+            return await self.generate_via_ai_or_raise(user)
+        except AIProviderError:
+            return await self.generate_fallback_only(user)
+
+    async def generate_via_ai_or_raise(self, user: User) -> GenerationOutcome:
+        """Технические ошибки провайдера (`AIProviderError`) пробрасываются
+        наверх — вызывающий код (delivery-таск) решает, ретраить ли через
+        Celery. Невалидный/повторяющийся ответ после одного повтора — это
+        не техническая ошибка, поэтому здесь тихо уходит в fallback."""
         request, recent_messages = await self._build_request(user)
 
-        outcome: GenerationOutcome | None = None
-        try:
-            outcome = await self._try_generate(request, recent_messages)
-        except AIProviderError:
-            outcome = None
-
-        if outcome is not None:
-            return outcome
-        return await self._pick_fallback(request, recent_messages)
-
-    async def _try_generate(
-        self, request: GenerationRequest, recent_messages: list[RecentMessageContext]
-    ) -> GenerationOutcome | None:
         result = await self._provider.generate_message(request)
         problems = self._check(result, request, recent_messages)
 
@@ -99,7 +102,7 @@ class GenerationService:
             result = await self._provider.generate_message(request)
             problems = self._check(result, request, recent_messages)
             if problems:
-                return None
+                return await self._pick_fallback(request, recent_messages)
 
         return GenerationOutcome(
             text=result.text,
@@ -111,9 +114,16 @@ class GenerationService:
             model=result.model,
             input_tokens=result.input_tokens,
             output_tokens=result.output_tokens,
+            total_tokens=result.total_tokens,
             prompt_version=CURRENT_PROMPT_VERSION,
             validation_status="ok",
         )
+
+    async def generate_fallback_only(self, user: User) -> GenerationOutcome:
+        """Используется после исчерпания Celery retries по AIProviderError —
+        к провайдеру больше не обращаемся, сразу берём резервную фразу."""
+        request, recent_messages = await self._build_request(user)
+        return await self._pick_fallback(request, recent_messages)
 
     def _check(
         self,
@@ -264,6 +274,7 @@ class GenerationService:
             model=None,
             input_tokens=None,
             output_tokens=None,
+            total_tokens=None,
             prompt_version=None,
             validation_status="fallback",
         )

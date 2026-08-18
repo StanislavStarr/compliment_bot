@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,6 +49,7 @@ class GeneratedMessageRepository:
         prompt_version_id: uuid.UUID | None = None,
         input_tokens: int | None = None,
         output_tokens: int | None = None,
+        total_tokens: int | None = None,
         validation_status: str | None = None,
     ) -> GeneratedMessage:
         """Персист сообщения привязан к `delivery_id` — вызывается из
@@ -66,9 +67,20 @@ class GeneratedMessageRepository:
             prompt_version_id=prompt_version_id,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+            total_tokens=total_tokens,
             validation_status=validation_status,
             generated_at=generated_at,
         )
         self._session.add(message)
         await self._session.flush()
         return message
+
+    async def get_by_delivery_id(self, delivery_id: uuid.UUID) -> GeneratedMessage | None:
+        result = await self._session.execute(
+            select(GeneratedMessage).where(GeneratedMessage.delivery_id == delivery_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def mark_sent(self, message: GeneratedMessage) -> None:
+        message.sent_at = datetime.now(UTC)
+        await self._session.flush()

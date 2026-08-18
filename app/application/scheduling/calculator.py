@@ -2,7 +2,7 @@ import random
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from app.domain.schedules.enums import PERIOD_WINDOWS, Period
+from app.domain.schedules.enums import PERIOD_WINDOWS, Period, ScheduleMode
 
 
 def compute_next_run_for_exact_time(
@@ -41,6 +41,27 @@ def compute_next_run_for_period(
         )
 
     return candidate_local.astimezone(UTC)
+
+
+def compute_next_run(
+    now_utc: datetime,
+    timezone_name: str,
+    mode: ScheduleMode,
+    exact_local_time: time | None,
+    period: Period | None,
+    rand: random.Random | None = None,
+) -> datetime:
+    """Общая точка входа для обоих режимов — использует и онбординг
+    (`finalize_schedule`), и delivery-таск после завершения доставки, чтобы
+    ветвление exact/period не дублировалось в двух местах."""
+    if mode is ScheduleMode.EXACT:
+        if exact_local_time is None:
+            raise ValueError("exact_local_time обязателен для режима EXACT")
+        return compute_next_run_for_exact_time(now_utc, timezone_name, exact_local_time)
+
+    if period is None:
+        raise ValueError("period обязателен для режима PERIOD")
+    return compute_next_run_for_period(now_utc, timezone_name, period, rand or random.Random())
 
 
 def _random_moment_in_window(

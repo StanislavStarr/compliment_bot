@@ -153,6 +153,31 @@ docker compose run --rm migrate alembic current
 uv run python scripts/check_openai_connection.py
 ```
 
+### Учёт токенов
+
+OpenAI Responses API возвращает фактическое количество токенов в каждом ответе (`usage.input_tokens`, `usage.output_tokens`, `usage.total_tokens`) — эти три числа сохраняются как есть, без пересчёта, в `generated_messages.input_tokens` / `output_tokens` / `total_tokens` (`OpenAIProvider.generate_message` → `GenerationOutcome` → `GeneratedMessageRepository.create`, `app/infrastructure/tasks/delivery.py`). Для fallback-сообщений (без вызова AI) все три поля — `NULL`.
+
+Посмотреть суммарный расход токенов:
+
+```bash
+# все сгенерированные AI сообщения
+docker exec -it compliment_bot-postgres-1 psql -U compliment_bot -d compliment_bot \
+  -c "select count(*), sum(input_tokens), sum(output_tokens), sum(total_tokens) from generated_messages where source = 'ai';"
+
+# токены последней генерации конкретного пользователя
+docker exec -it compliment_bot-postgres-1 psql -U compliment_bot -d compliment_bot \
+  -c "select generated_at, model, input_tokens, output_tokens, total_tokens from generated_messages where user_id = '<uuid>' order by generated_at desc limit 1;"
+```
+
+## Планировщик и доставка (Этап 5)
+
+Раздел 17 продуктового плана. Два Celery-таска (`app/infrastructure/tasks/`):
+
+- `tasks.dispatch_due_schedules` (Celery Beat, раз в минуту, `scheduler.py`) — блокирует due-расписания (`FOR UPDATE SKIP LOCKED`), создаёт `Delivery` с идемпотентным ключом `user_id:local_date` и ставит `tasks.deliver_message` в очередь. Не продвигает `next_run_at_utc` — двойной тик просто упрётся в unique-constraint `(user_id, local_delivery_date)`.
+- `tasks.deliver_message` (`delivery.py`) — генерирует сообщение (не более одного вызова AI на весь жизненный цикл доставки — retry повторно отправляет уже сохранённый текст, не генерирует заново), отправляет в Telegram, продвигает расписание на следующий день. Технические ошибки (AI/Telegram) ретраятся через 1 / 5 / 15 минут (`DELIVERY_RETRY_DELAYS_SECONDS`), после чего — fallback-фраза. Доставки старше 2 часов (`MISSED_DELIVERY_THRESHOLD_HOURS`) помечаются `expired` без генерации. При `Forbidden` от Telegram пользователь помечается `blocked`, а расписание — на паузу.
+
+DB-сессии Celery-тасков используют отдельный engine с `NullPool` (`get_celery_session_factory` в `app/infrastructure/db/session.py`) — обычный пул привязан к первому event loop и падает на второй задаче, т.к. каждый вызов таска оборачивается в свой `asyncio.run()`.
+
 ## Статус
 
 Разработка ведётся поэтапно по плану из раздела «19. План разработки по этапам» продуктового документа.
@@ -162,5 +187,6 @@ uv run python scripts/check_openai_connection.py
 - ✅ Этап 1. FastAPI health/ready, Celery + Beat, логирование.
 - ✅ Этап 2. Схема БД, миграции, репозитории, калькулятор расписания.
 - ✅ Этап 3. Telegram-бот и онбординг: FSM на 12 шагов с сохранением каждого ответа сразу в БД, восстановление после `/start`, резюме анкеты и редактирование по разделам. FSM-хранилище — Redis (`fsm_storage_db`), переживает перезапуск бота.
-- ✅ Этап 4. AI-генерация сообщений: `AIProvider`/`OpenAIProvider` через Responses API со structured output, prompt builder (system + user, с защитой от prompt injection), локальный валидатор (длина, язык, эмодзи, приветствия, советы, тема/тип, semantic_key), защита от повторов (exact/close match + semantic_key), `GenerationService` — round-robin тем/типов, сбор обезличенного контекста, один повтор при нарушении, fallback из `fallback_messages`. Персист в `generated_messages`/`deliveries` и Celery-обвязка — Этап 5.
-- ⏳ Этап 5. Планировщик и доставка сообщений — далее.
+- ✅ Этап 4. AI-генерация сообщений: `AIProvider`/`OpenAIProvider` через Responses API со structured output, prompt builder (system + user, с защитой от prompt injection), локальный валидатор (длина, язык, эмодзи, приветствия, советы, тема/тип, semantic_key), защита от повторов (exact/close match + semantic_key), `GenerationService` — round-robin тем/типов, сбор обезличенного контекста, один повтор при нарушении, fallback из `fallback_messages`. Учёт токенов — `input_tokens`/`output_tokens`/`total_tokens` из ответа OpenAI пишутся в `generated_messages` как есть.
+- ✅ Этап 5. Планировщик и доставка: `tasks.dispatch_due_schedules` (Beat, раз в минуту, идемпотентное создание `Delivery`) + `tasks.deliver_message` (генерация не дублируется на retry, отправка в Telegram, retries 1/5/15 мин, missed-threshold 2ч → `expired`, `Forbidden` → пользователь `blocked` + пауза расписания, продвижение `next_run_at_utc` после каждой завершённой доставки).
+- ⏳ Этап 6. Feedback и настройки — далее.
