@@ -13,6 +13,32 @@ class FeedbackRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    async def get_by_message_id(self, message_id: uuid.UUID) -> Feedback | None:
+        result = await self._session.execute(
+            select(Feedback).where(Feedback.message_id == message_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def create(
+        self,
+        *,
+        message_id: uuid.UUID,
+        user_id: uuid.UUID,
+        reaction: ReactionType,
+        reason_code: str | None = None,
+        comment: str | None = None,
+    ) -> Feedback:
+        feedback = Feedback(
+            message_id=message_id,
+            user_id=user_id,
+            reaction=reaction,
+            reason_code=reason_code,
+            comment=comment,
+        )
+        self._session.add(feedback)
+        await self._session.flush()
+        return feedback
+
     async def list_recent_dislike_reasons(
         self, user_id: uuid.UUID, limit: int = MAX_RECENT_DISLIKE_REASONS_IN_PROMPT
     ) -> list[str]:

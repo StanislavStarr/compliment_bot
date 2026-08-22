@@ -16,7 +16,7 @@ from celery.exceptions import MaxRetriesExceededError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.generation.service import GenerationService
-from app.application.scheduling.calculator import compute_next_run
+from app.application.scheduling.calculator import compute_next_run_after
 from app.config import Settings, get_settings
 from app.domain.schedules.constants import DELIVERY_MAX_RETRIES, DELIVERY_RETRY_DELAYS_SECONDS
 from app.domain.schedules.enums import MISSED_DELIVERY_THRESHOLD_HOURS, DeliveryStatus
@@ -115,10 +115,25 @@ async def _deliver_message(delivery_id: uuid.UUID) -> None:
         await delivery_repo.record_attempt(delivery)
         await session.commit()
 
-        provider = create_ai_provider(settings)
-        service = GenerationService(session, provider)
-        message = await _generate_message(session, service, user, delivery, allow_ai=True)
-        await _send_and_finalize(session, settings, user, delivery, message)
+        try:
+            provider = create_ai_provider(settings)
+            service = GenerationService(session, provider)
+            message = await _generate_message(session, service, user, delivery, allow_ai=True)
+            await _send_and_finalize(session, settings, user, delivery, message)
+        except (TransientDeliveryError, PermanentDeliveryError):
+            raise
+        except Exception as exc:
+            # Любая непредвиденная ошибка (например, невалидный/отсутствующий
+            # OPENAI_API_KEY при создании клиента — эта ошибка вылетает ДО
+            # AIProviderError и раньше вообще не ловилась) не должна навсегда
+            # "подвешивать" доставку в QUEUED — иначе next_run_at_utc никогда
+            # не продвинется и расписание перестанет работать.
+            logger.error(
+                "delivery_unexpected_error",
+                delivery_id=str(delivery_id),
+                error=f"{exc.__class__.__name__}: {exc}",
+            )
+            raise TransientDeliveryError(f"unexpected_error: {exc}") from exc
 
 
 async def _finalize_after_exhausted_retries(delivery_id: uuid.UUID) -> None:
@@ -138,13 +153,19 @@ async def _finalize_after_exhausted_retries(delivery_id: uuid.UUID) -> None:
             await session.commit()
             return
 
-        provider = create_ai_provider(settings)
-        service = GenerationService(session, provider)
         try:
+            provider = create_ai_provider(settings)
+            service = GenerationService(session, provider)
             message = await _generate_message(session, service, user, delivery, allow_ai=False)
             await _send_and_finalize(session, settings, user, delivery, message)
-        except TransientDeliveryError as exc:
-            await delivery_repo.mark_failed(delivery, "telegram_unreachable_after_retries")
+        except PermanentDeliveryError:
+            pass
+        except Exception as exc:
+            # Сюда же попадает GenerationError (нет резервных сообщений для
+            # темы) и любая другая неожиданная ошибка — это последняя попытка
+            # для данной доставки, дальше только failed + продвижение
+            # расписания, чтобы не заблокировать следующие дни.
+            await delivery_repo.mark_failed(delivery, "final_failure")
             await _advance_schedule(session, delivery)
             await session.commit()
             logger.error("delivery_final_failure", delivery_id=str(delivery_id), error=str(exc))
@@ -278,7 +299,8 @@ async def _advance_schedule(session: AsyncSession, delivery: Delivery) -> None:
     if schedule is None or not schedule.is_active:
         return
 
-    next_run_at_utc = compute_next_run(
+    next_run_at_utc = compute_next_run_after(
+        delivery.local_delivery_date,
         datetime.now(UTC),
         schedule.timezone_name,
         schedule.mode,

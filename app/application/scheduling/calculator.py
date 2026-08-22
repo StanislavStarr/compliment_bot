@@ -64,6 +64,34 @@ def compute_next_run(
     return compute_next_run_for_period(now_utc, timezone_name, period, rand or random.Random())
 
 
+def compute_next_run_after(
+    local_delivery_date: date,
+    now_utc: datetime,
+    timezone_name: str,
+    mode: ScheduleMode,
+    exact_local_time: time | None,
+    period: Period | None,
+    rand: random.Random | None = None,
+) -> datetime:
+    """Продвижение расписания после обработанной доставки. Гарантирует, что
+    результат попадёт на календарный день строго позже `local_delivery_date`.
+
+    Без этой гарантии PERIOD-режим может вернуть время ещё "сегодня" (если
+    окно периода к моменту продвижения не прошло), а уникальный ключ
+    доставки `(user_id, local_delivery_date)` не даст создать новую запись
+    на тот же день — расписание окажется "просроченным" навсегда, потому что
+    scheduler каждый раз будет находить уже существующую (обработанную)
+    доставку и ничего не создавать."""
+    candidate = compute_next_run(now_utc, timezone_name, mode, exact_local_time, period, rand)
+    tz = ZoneInfo(timezone_name)
+    if candidate.astimezone(tz).date() <= local_delivery_date:
+        not_before = datetime.combine(local_delivery_date, time.max, tzinfo=tz).astimezone(UTC)
+        candidate = compute_next_run(
+            not_before, timezone_name, mode, exact_local_time, period, rand
+        )
+    return candidate
+
+
 def _random_moment_in_window(
     local_date: date, period: Period, tz: ZoneInfo, rand: random.Random
 ) -> datetime:
