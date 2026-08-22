@@ -7,7 +7,9 @@ from app.config import Settings
 from app.infrastructure.telegram.middlewares.db_session import DbSessionMiddleware
 from app.infrastructure.telegram.routers.admin import router as admin_router
 from app.infrastructure.telegram.routers.fallback import router as fallback_router
+from app.infrastructure.telegram.routers.feedback import router as feedback_router
 from app.infrastructure.telegram.routers.onboarding import router as onboarding_router
+from app.infrastructure.telegram.routers.settings import router as settings_router
 from app.infrastructure.telegram.routers.start import router as start_router
 
 
@@ -26,6 +28,8 @@ def create_dispatcher(settings: Settings) -> Dispatcher:
 
     dispatcher.include_router(start_router)
     dispatcher.include_router(admin_router)
+    dispatcher.include_router(settings_router)
+    dispatcher.include_router(feedback_router)
     dispatcher.include_router(onboarding_router)
     dispatcher.include_router(fallback_router)
 

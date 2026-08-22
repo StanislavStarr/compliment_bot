@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.application.onboarding.service import OnboardingService
 from app.domain.users.enums import OnboardingStep, UserStatus
 from app.infrastructure.telegram.routers.onboarding import render_current_step
+from app.infrastructure.telegram.routers.settings import render_settings
 
 router = Router(name="start")
 
@@ -19,12 +20,11 @@ async def on_start(message: Message, state: FSMContext, session: AsyncSession) -
         telegram_user_id=message.from_user.id, telegram_chat_id=message.chat.id
     )
 
-    if user.status == UserStatus.ACTIVE and user.onboarding_step == OnboardingStep.DONE:
-        await state.clear()
-        await message.answer(
-            "Вы уже зарегистрированы, профиль настроен. Управление настройками "
-            "будет добавлено на следующем этапе разработки."
-        )
+    if user.onboarding_step == OnboardingStep.DONE and user.status in {
+        UserStatus.ACTIVE,
+        UserStatus.PAUSED,
+    }:
+        await render_settings(message, state, session, user)
         return
 
     await render_current_step(message, state, service, user)
@@ -34,5 +34,10 @@ async def on_start(message: Message, state: FSMContext, session: AsyncSession) -
 async def on_help(message: Message) -> None:
     await message.answer(
         "Этот бот раз в день присылает короткий персональный комплимент или слова "
-        "поддержки. Отправьте /start, чтобы начать или продолжить настройку профиля."
+        "поддержки.\n\n"
+        "/start — начать или открыть настройки\n"
+        "/settings — профиль и расписание\n"
+        "/pause — приостановить сообщения\n"
+        "/resume — возобновить\n"
+        "/delete — удалить профиль"
     )

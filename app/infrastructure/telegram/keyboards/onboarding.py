@@ -123,10 +123,13 @@ EDIT_SECTIONS: list[tuple[str, str]] = [
 ]
 
 
-def edit_menu_keyboard() -> InlineKeyboardMarkup:
+def edit_menu_keyboard(
+    back_callback: str = "edit:back",
+    back_text: str = "⬅️ Назад к резюме",
+) -> InlineKeyboardMarkup:
     rows = [
         [InlineKeyboardButton(text=label, callback_data=f"edit:{code}")]
         for code, label in EDIT_SECTIONS
     ]
-    rows.append([InlineKeyboardButton(text="⬅️ Назад к резюме", callback_data="edit:back")])
+    rows.append([InlineKeyboardButton(text=back_text, callback_data=back_callback)])
     return InlineKeyboardMarkup(inline_keyboard=rows)

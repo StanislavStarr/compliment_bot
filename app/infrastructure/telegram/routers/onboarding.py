@@ -85,6 +85,9 @@ async def _finish_section(
     """Общий переход между шагами: если раздел открыт из меню редактирования
     резюме — возвращаемся к резюме, иначе двигаемся дальше по порядку шагов."""
     data = await state.get_data()
+    if data.get("settings_edit"):
+        await _return_to_settings(event, state, service, user)
+        return
     if data.get("edit_mode"):
         await state.update_data(edit_mode=False)
         await service.set_step(user, OnboardingStep.SUMMARY)
@@ -92,6 +95,16 @@ async def _finish_section(
         return
     await service.set_step(user, step_after)
     await render_next()
+
+
+async def _return_to_settings(
+    event: Event, state: FSMContext, service: OnboardingService, user: User
+) -> None:
+    """Редактирование из /settings не должно менять onboarding_step (он уже DONE)."""
+    await state.update_data(edit_mode=False, settings_edit=False)
+    from app.infrastructure.telegram.routers.settings import render_settings
+
+    await render_settings(event, state, service._session, user)
 
 
 # --- Согласие и 18+ ---
@@ -593,7 +606,9 @@ async def _to_schedule_mode(
     при редактировании раздела "часовой пояс и время" нужно всё равно пройти
     режим/время — иначе расписание не сохранится с новым часовым поясом.
     К резюме возвращаемся только после `finalize_schedule`."""
-    await service.set_step(user, OnboardingStep.SCHEDULE_MODE)
+    data = await state.get_data()
+    if not data.get("settings_edit"):
+        await service.set_step(user, OnboardingStep.SCHEDULE_MODE)
     await render_schedule_mode(event, state)
 
 
@@ -681,9 +696,7 @@ async def _finalize_exact_schedule(
     await service.finalize_schedule(
         user, timezone_name, ScheduleMode.EXACT, exact_local_time=exact_time
     )
-    await state.update_data(edit_mode=False)
-    await service.set_step(user, OnboardingStep.SUMMARY)
-    await render_summary(event, state, service, user)
+    await _after_schedule_saved(event, state, service, user)
 
 
 @router.callback_query(
@@ -708,9 +721,19 @@ async def on_schedule_period(
         return
 
     await service.finalize_schedule(user, timezone_name, ScheduleMode.PERIOD, period=period)
+    await _after_schedule_saved(callback, state, service, user)
+
+
+async def _after_schedule_saved(
+    event: Event, state: FSMContext, service: OnboardingService, user: User
+) -> None:
+    data = await state.get_data()
+    if data.get("settings_edit"):
+        await _return_to_settings(event, state, service, user)
+        return
     await state.update_data(edit_mode=False)
     await service.set_step(user, OnboardingStep.SUMMARY)
-    await render_summary(callback, state, service, user)
+    await render_summary(event, state, service, user)
 
 
 # --- Резюме ---
@@ -771,8 +794,8 @@ async def on_summary_confirm(
     await service.complete_onboarding(user)
     await state.clear()
     await _cb_message(callback).answer(
-        "Готово! Профиль настроен. Первое сообщение придёт по расписанию — "
-        "генерация и доставка подключаются на следующих этапах разработки."
+        "Готово! Профиль настроен. Сообщения будут приходить по расписанию. "
+        "Посмотреть и изменить настройки — /settings."
     )
 
 
@@ -791,6 +814,10 @@ async def on_edit_back(callback: CallbackQuery, state: FSMContext, session: Asyn
     await callback.answer()
     await _cb_message(callback).edit_reply_markup(reply_markup=None)
     if user is None:
+        return
+    data = await state.get_data()
+    if data.get("settings_edit"):
+        await _return_to_settings(callback, state, service, user)
         return
     await render_summary(callback, state, service, user)
 

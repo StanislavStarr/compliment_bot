@@ -11,6 +11,7 @@ from aiogram.exceptions import (
     TelegramRetryAfter,
     TelegramServerError,
 )
+from aiogram.types import InlineKeyboardMarkup
 from celery import Task
 from celery.exceptions import MaxRetriesExceededError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +37,7 @@ from app.infrastructure.db.session import get_celery_session_factory
 from app.infrastructure.logging.setup import get_logger
 from app.infrastructure.tasks.celery_app import celery_app
 from app.infrastructure.telegram.bot import create_bot
+from app.infrastructure.telegram.keyboards.feedback import feedback_keyboard
 
 logger = get_logger(__name__)
 
@@ -247,7 +249,9 @@ async def _send_and_finalize(
     bot = create_bot(settings)
     try:
         assert message.text is not None
-        await _send_telegram_message(bot, user, message.text)
+        await _send_telegram_message(
+            bot, user, message.text, reply_markup=feedback_keyboard(message.id)
+        )
     except PermanentDeliveryError as exc:
         if exc.error_code == "telegram_forbidden":
             await UserRepository(session).mark_blocked(user)
@@ -272,9 +276,11 @@ async def _send_and_finalize(
     logger.info("delivery_sent", delivery_id=str(delivery.id))
 
 
-async def _send_telegram_message(bot: Bot, user: User, text: str) -> None:
+async def _send_telegram_message(
+    bot: Bot, user: User, text: str, reply_markup: InlineKeyboardMarkup | None = None
+) -> None:
     try:
-        await bot.send_message(chat_id=user.telegram_chat_id, text=text)
+        await bot.send_message(chat_id=user.telegram_chat_id, text=text, reply_markup=reply_markup)
     except TelegramForbiddenError as exc:
         raise PermanentDeliveryError("telegram_forbidden") from exc
     except TelegramBadRequest as exc:

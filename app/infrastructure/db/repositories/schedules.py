@@ -66,3 +66,9 @@ class ScheduleRepository:
         schedule.is_active = False
         schedule.paused_at = datetime.now(UTC)
         await self._session.flush()
+
+    async def resume(self, schedule: Schedule, next_run_at_utc: datetime) -> None:
+        schedule.is_active = True
+        schedule.paused_at = None
+        schedule.next_run_at_utc = next_run_at_utc
+        await self._session.flush()

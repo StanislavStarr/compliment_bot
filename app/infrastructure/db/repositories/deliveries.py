@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, date, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +12,15 @@ from app.infrastructure.db.models.deliveries import Delivery
 class DeliveryRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+
+    async def latest_local_date_on_or_after(self, user_id: uuid.UUID, start: date) -> date | None:
+        result = await self._session.execute(
+            select(func.max(Delivery.local_delivery_date)).where(
+                Delivery.user_id == user_id,
+                Delivery.local_delivery_date >= start,
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def get_by_user_and_date(
         self, user_id: uuid.UUID, local_delivery_date: date

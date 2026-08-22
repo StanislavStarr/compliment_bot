@@ -31,3 +31,7 @@ class UserRepository:
         останавливаем доставки без бесконечных retries (раздел 17 плана)."""
         user.status = UserStatus.BLOCKED
         await self._session.flush()
+
+    async def delete(self, user: User) -> None:
+        await self._session.delete(user)
+        await self._session.flush()

@@ -75,6 +75,9 @@ class GeneratedMessageRepository:
         await self._session.flush()
         return message
 
+    async def get_by_id(self, message_id: uuid.UUID) -> GeneratedMessage | None:
+        return await self._session.get(GeneratedMessage, message_id)
+
     async def get_by_delivery_id(self, delivery_id: uuid.UUID) -> GeneratedMessage | None:
         result = await self._session.execute(
             select(GeneratedMessage).where(GeneratedMessage.delivery_id == delivery_id)

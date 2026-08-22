@@ -76,23 +76,28 @@ class GenerationService:
         self.feedback = FeedbackRepository(session)
         self.fallback_messages = FallbackMessageRepository(session)
 
-    async def generate(self, user: User) -> GenerationOutcome:
+    async def generate(
+        self, user: User, message_type: MessageType | None = None
+    ) -> GenerationOutcome:
         """Удобный вариант "всегда успешен" — сам решает AI vs fallback.
         Использовать вне delivery-таска (ручная проверка, будущие admin-сценарии).
         Delivery-таск (Этап 5) вызывает `generate_via_ai_or_raise` и
         `generate_fallback_only` по отдельности, чтобы техническая ошибка
-        провайдера могла ретраиться на уровне Celery, а не тонуть здесь."""
+        провайдера могла ретраиться на уровне Celery, а не тонуть здесь.
+        `message_type` задаёт жанр вручную; `None` — чередование как в доставке."""
         try:
-            return await self.generate_via_ai_or_raise(user)
+            return await self.generate_via_ai_or_raise(user, message_type=message_type)
         except AIProviderError:
-            return await self.generate_fallback_only(user)
+            return await self.generate_fallback_only(user, message_type=message_type)
 
-    async def generate_via_ai_or_raise(self, user: User) -> GenerationOutcome:
+    async def generate_via_ai_or_raise(
+        self, user: User, message_type: MessageType | None = None
+    ) -> GenerationOutcome:
         """Технические ошибки провайдера (`AIProviderError`) пробрасываются
         наверх — вызывающий код (delivery-таск) решает, ретраить ли через
         Celery. Невалидный/повторяющийся ответ после одного повтора — это
         не техническая ошибка, поэтому здесь тихо уходит в fallback."""
-        request, recent_messages = await self._build_request(user)
+        request, recent_messages = await self._build_request(user, message_type=message_type)
 
         result = await self._provider.generate_message(request)
         problems = self._check(result, request, recent_messages)
@@ -119,10 +124,12 @@ class GenerationService:
             validation_status="ok",
         )
 
-    async def generate_fallback_only(self, user: User) -> GenerationOutcome:
+    async def generate_fallback_only(
+        self, user: User, message_type: MessageType | None = None
+    ) -> GenerationOutcome:
         """Используется после исчерпания Celery retries по AIProviderError —
         к провайдеру больше не обращаемся, сразу берём резервную фразу."""
-        request, recent_messages = await self._build_request(user)
+        request, recent_messages = await self._build_request(user, message_type=message_type)
         return await self._pick_fallback(request, recent_messages)
 
     def _check(
@@ -138,9 +145,11 @@ class GenerationService:
         return problems
 
     async def _build_request(
-        self, user: User
+        self, user: User, message_type: MessageType | None = None
     ) -> tuple[GenerationRequest, list[RecentMessageContext]]:
-        topic_code, topic_label, message_type = await self._select_topic_and_type(user)
+        topic_code, topic_label, selected_type = await self._select_topic_and_type(user)
+        if message_type is not None:
+            selected_type = message_type
         address_mode = user.address_mode or AddressMode.INFORMAL
 
         recent_rows = await self.generated_messages.list_recent_for_user(user.id)
@@ -155,7 +164,7 @@ class GenerationService:
         ][:MAX_LIKED_EXAMPLES_IN_PROMPT]
 
         reference_rows = await self.fallback_messages.list_active_for(
-            topic_code, message_type, address_mode
+            topic_code, selected_type, address_mode
         )
         reference_examples = [
             ReferenceExample(text=row.text)
@@ -164,7 +173,7 @@ class GenerationService:
 
         request = GenerationRequest(
             address_mode=address_mode,
-            message_type=message_type,
+            message_type=selected_type,
             topic_code=topic_code,
             topic_label=topic_label,
             qualities=await self._load_quality_labels(user),
