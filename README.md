@@ -105,6 +105,31 @@ curl -s http://localhost:8000/health
 curl -s http://localhost:8000/ready
 ```
 
+## CI
+
+На push/PR в `main` GitHub Actions гоняет `ruff check`, `ruff format --check`, `mypy` и сборку Docker-образа (без push, pytest в CI по плану после Gift Release).
+
+## Деплой на VPS (dev и prod)
+
+Два Compose-проекта на одной машине: разные `-p`, `.env.dev` / `.env.prod`, разные хостовые порты. Данные не шарятся.
+
+```bash
+# prod
+docker compose --env-file .env.prod -p compliments-prod up -d --build
+
+# dev (другие порты в .env.dev)
+docker compose --env-file .env.dev -p compliments-dev up -d --build
+```
+
+В каждом env-файле обязательно: `COMPOSE_ENV_FILE=.env.prod` (или `.env.dev`), свои `TELEGRAM_BOT_TOKEN`, `POSTGRES_DB`, `POSTGRES_PASSWORD`, `OPENAI_API_KEY`, и порты вроде `5433` / `6380` / `8001` для второго стека.
+
+```bash
+curl -s http://127.0.0.1:8000/health
+curl -s http://127.0.0.1:8000/ready
+docker compose -p compliments-prod ps
+docker compose -p compliments-prod logs bot worker beat
+```
+
 ## Миграции (Alembic)
 
 В Docker миграции накатываются автоматически сервисом `migrate` при `docker compose up`. Ручные команды нужны для разработки — создание новой миграции и локальных экспериментов.
@@ -197,4 +222,5 @@ DB-сессии Celery-тасков используют отдельный engi
 - ✅ Этап 5. Планировщик и доставка: `tasks.dispatch_due_schedules` (Beat, раз в минуту, идемпотентное создание `Delivery`) + `tasks.deliver_message` (генерация не дублируется на retry, отправка в Telegram, retries 1/5/15 мин, missed-threshold 2ч → `expired`, `Forbidden` → пользователь `blocked` + пауза расписания, продвижение `next_run_at_utc` после каждой завершённой доставки).
 - ✅ Этап 6. Feedback и настройки: кнопки «Нравится» / «Повторяется» / «Не нравится» под доставкой (like сохраняет текст как style example), реакция окончательная; `/settings` с просмотром и правкой профиля/расписания (те же шаги онбординга, `onboarding_step` не сбрасывается); `/pause` `/resume` `/delete`; админ `/generate` и «Получить сообщение сейчас» пишут реальные `Delivery`/`GeneratedMessage` на даты с `2099-01-01` (слот сегодняшнего дня не занимается, `next_run` не сдвигается) и ставят те же кнопки реакций. Перед боевым использованием: `delete from deliveries where local_delivery_date >= '2099-01-01';`.
 - ✅ Этап 7. Тесты и hardening: юниты сканера/идемпотентности, generation retry→fallback, structured output schema, timezone/`next_run_after`; `AdminAlertService` шлёт админу `delivery_final_failure`; сквозной integration (`tests/integration/test_delivery_flow.py`) — due scan, одна доставка, mock AI/Telegram, cascade delete (скипается, если нет Postgres/Redis).
-- ⏳ Этап 8. CI и VPS — далее.
+- ✅ Этап 8. CI: GitHub Actions (`ruff` / `ruff format --check` / `mypy` / Docker build). VPS — ручной деплой, см. раздел «Деплой на VPS» выше.
+- ⏳ Этап 9. Личное тестирование — далее.
