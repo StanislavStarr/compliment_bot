@@ -35,6 +35,7 @@ from app.infrastructure.db.repositories.schedules import ScheduleRepository
 from app.infrastructure.db.repositories.users import UserRepository
 from app.infrastructure.db.session import get_celery_session_factory
 from app.infrastructure.logging.setup import get_logger
+from app.infrastructure.monitoring.alerts import AdminAlertService
 from app.infrastructure.tasks.celery_app import celery_app
 from app.infrastructure.telegram.bot import create_bot
 from app.infrastructure.telegram.keyboards.feedback import feedback_keyboard
@@ -140,8 +141,7 @@ async def _deliver_message(delivery_id: uuid.UUID) -> None:
 
 async def _finalize_after_exhausted_retries(delivery_id: uuid.UUID) -> None:
     """AI failure пункт 3: "после исчерпания API retries → fallback".
-    Если и отправка fallback не удаётся — пункт 6: "final failure и alert"
-    (алертинг как отдельный канал — Этап 7, здесь пишем ERROR-лог)."""
+    Если и отправка fallback не удаётся — пункт 6: "final failure и alert"."""
     settings = get_settings()
     async with get_celery_session_factory()() as session:
         delivery_repo = DeliveryRepository(session)
@@ -170,7 +170,11 @@ async def _finalize_after_exhausted_retries(delivery_id: uuid.UUID) -> None:
             await delivery_repo.mark_failed(delivery, "final_failure")
             await _advance_schedule(session, delivery)
             await session.commit()
-            logger.error("delivery_final_failure", delivery_id=str(delivery_id), error=str(exc))
+            await AdminAlertService(settings).notify(
+                "delivery_final_failure",
+                delivery_id=str(delivery_id),
+                error=str(exc),
+            )
 
 
 async def _generate_message(

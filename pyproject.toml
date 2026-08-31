@@ -70,6 +70,7 @@ plugins = ["pydantic.mypy"]
 pythonpath = ["."]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = ["integration: нужен Postgres со схемой бота и Redis"]
 
 [tool.coverage.run]
 source = ["app"]

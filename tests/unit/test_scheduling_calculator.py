@@ -1,11 +1,12 @@
 import random
-from datetime import UTC, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from app.application.scheduling.calculator import (
     compute_next_run,
+    compute_next_run_after,
     compute_next_run_for_exact_time,
     compute_next_run_for_period,
 )
@@ -86,3 +87,39 @@ def test_compute_next_run_requires_period_for_period_mode() -> None:
 
     with pytest.raises(ValueError, match="period"):
         compute_next_run(now_utc, "Asia/Ho_Chi_Minh", ScheduleMode.PERIOD, None, None)
+
+
+def test_timezone_converts_local_exact_time_to_utc() -> None:
+    now_utc = datetime(2026, 1, 5, 1, 0, tzinfo=UTC)
+    krasnoyarsk = ZoneInfo("Asia/Krasnoyarsk")
+
+    result = compute_next_run_for_exact_time(now_utc, "Asia/Krasnoyarsk", time(10, 6))
+    local = result.astimezone(krasnoyarsk)
+
+    assert local.hour == 10
+    assert local.minute == 6
+    assert result.tzinfo is UTC or result.utcoffset() == timedelta(0)
+
+
+def test_exact_time_crosses_utc_day_boundary() -> None:
+    now_utc = datetime(2026, 1, 5, 23, 30, tzinfo=UTC)
+
+    result = compute_next_run_for_exact_time(now_utc, "Asia/Ho_Chi_Minh", time(7, 0))
+    local = result.astimezone(HO_CHI_MINH)
+
+    assert local.date() == date(2026, 1, 6)
+    assert local.hour == 7
+
+
+def test_compute_next_run_after_moves_to_next_local_day() -> None:
+    # 10:00 UTC = 17:00 +7; 18:00 локально ещё сегодня, но слот дня уже занят.
+    now_utc = datetime(2026, 1, 5, 10, 0, tzinfo=UTC)
+    sent_on = date(2026, 1, 5)
+
+    result = compute_next_run_after(
+        sent_on, now_utc, "Asia/Ho_Chi_Minh", ScheduleMode.EXACT, time(18, 0), None
+    )
+    local = result.astimezone(HO_CHI_MINH)
+
+    assert local.date() == date(2026, 1, 6)
+    assert local.hour == 18

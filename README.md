@@ -52,6 +52,9 @@ uv run mypy .
 # тесты
 uv run pytest
 
+# сквозной сценарий доставки (нужны Postgres со схемой и Redis, иначе skip)
+uv run pytest tests/integration/test_delivery_flow.py
+
 # pre-commit хуки
 uv run pre-commit install
 ```
@@ -193,4 +196,5 @@ DB-сессии Celery-тасков используют отдельный engi
 - ✅ Этап 4. AI-генерация сообщений: `AIProvider`/`OpenAIProvider` через Responses API со structured output, prompt builder (system + user, с защитой от prompt injection), локальный валидатор (длина, язык, эмодзи, приветствия, советы, тема/тип, semantic_key), защита от повторов (exact/close match + semantic_key), `GenerationService` — round-robin тем/типов, сбор обезличенного контекста, один повтор при нарушении, fallback из `fallback_messages`. Учёт токенов — `input_tokens`/`output_tokens`/`total_tokens` из ответа OpenAI пишутся в `generated_messages` как есть.
 - ✅ Этап 5. Планировщик и доставка: `tasks.dispatch_due_schedules` (Beat, раз в минуту, идемпотентное создание `Delivery`) + `tasks.deliver_message` (генерация не дублируется на retry, отправка в Telegram, retries 1/5/15 мин, missed-threshold 2ч → `expired`, `Forbidden` → пользователь `blocked` + пауза расписания, продвижение `next_run_at_utc` после каждой завершённой доставки).
 - ✅ Этап 6. Feedback и настройки: кнопки «Нравится» / «Повторяется» / «Не нравится» под доставкой (like сохраняет текст как style example), реакция окончательная; `/settings` с просмотром и правкой профиля/расписания (те же шаги онбординга, `onboarding_step` не сбрасывается); `/pause` `/resume` `/delete`; админ `/generate` и «Получить сообщение сейчас» пишут реальные `Delivery`/`GeneratedMessage` на даты с `2099-01-01` (слот сегодняшнего дня не занимается, `next_run` не сдвигается) и ставят те же кнопки реакций. Перед боевым использованием: `delete from deliveries where local_delivery_date >= '2099-01-01';`.
-- ⏳ Этап 7. Тесты и hardening — далее.
+- ✅ Этап 7. Тесты и hardening: юниты сканера/идемпотентности, generation retry→fallback, structured output schema, timezone/`next_run_after`; `AdminAlertService` шлёт админу `delivery_final_failure`; сквозной integration (`tests/integration/test_delivery_flow.py`) — due scan, одна доставка, mock AI/Telegram, cascade delete (скипается, если нет Postgres/Redis).
+- ⏳ Этап 8. CI и VPS — далее.
