@@ -29,7 +29,8 @@ def next_manual_delivery_date(
 
 
 class ManualDeliveryService:
-    """Админский /generate: тот же persist, что у worker, без сдвига расписания."""
+    """Внеплановая доставка (/generate и первое сообщение после онбординга):
+    тот же persist, что у worker, без сдвига next_run."""
 
     def __init__(self, session: AsyncSession, provider: AIProvider) -> None:
         self._session = session

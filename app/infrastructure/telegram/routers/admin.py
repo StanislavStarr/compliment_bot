@@ -1,20 +1,15 @@
 """Служебные команды для проверки внутренней механики бота. Не часть
 продуктового сценария — доступны только `ADMIN_TELEGRAM_ID` из настроек."""
 
-import html
-
 from aiogram import Router
-from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command
 from aiogram.types import Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.application.admin.service import ManualDeliveryError, ManualDeliveryService
 from app.config import get_settings
 from app.domain.users.enums import UserStatus
-from app.infrastructure.ai.factory import create_ai_provider
 from app.infrastructure.db.repositories.users import UserRepository
-from app.infrastructure.telegram.keyboards.feedback import feedback_keyboard
+from app.infrastructure.telegram.unscheduled import send_unscheduled_message
 
 router = Router(name="admin")
 
@@ -44,28 +39,10 @@ async def run_admin_generation(
         )
         return
 
-    settings = get_settings()
-    service = ManualDeliveryService(session, create_ai_provider(settings))
-
     await reply_target.answer("Генерирую сообщение...")
-    try:
-        delivery, message = await service.create_and_generate(user)
-    except ManualDeliveryError as exc:
-        await reply_target.answer(f"Ошибка генерации: {html.escape(str(exc))}")
-        return
-
-    if not message.text:
-        await service.mark_failed(delivery, "empty_text")
-        await reply_target.answer("Пустой текст генерации.")
-        return
-
-    try:
-        await reply_target.answer(message.text, reply_markup=feedback_keyboard(message.id))
-    except TelegramAPIError:
-        await service.mark_failed(delivery, "telegram_send_error")
-        await reply_target.answer("Не удалось отправить сообщение.")
-        return
-    await service.mark_sent(delivery, message)
+    sent = await send_unscheduled_message(reply_target, session, user)
+    if not sent:
+        await reply_target.answer("Не удалось сгенерировать сообщение. Попробуйте ещё раз.")
 
 
 @router.message(Command("generate"))

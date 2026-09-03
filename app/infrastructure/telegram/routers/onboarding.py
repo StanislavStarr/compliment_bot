@@ -29,6 +29,7 @@ from app.infrastructure.telegram.keyboards.onboarding import (
     timezone_keyboard,
 )
 from app.infrastructure.telegram.states.onboarding import Onboarding
+from app.infrastructure.telegram.unscheduled import send_unscheduled_message
 
 router = Router(name="onboarding")
 
@@ -793,10 +794,12 @@ async def on_summary_confirm(
         return
     await service.complete_onboarding(user)
     await state.clear()
-    await _cb_message(callback).answer(
-        "Готово! Профиль настроен. Сообщения будут приходить по расписанию. "
-        "Посмотреть и изменить настройки — /settings."
+    msg = _cb_message(callback)
+    await msg.answer(
+        "Готово! Профиль настроен. Сейчас пришлю первое сообщение — дальше они "
+        "будут приходить по расписанию. Посмотреть и изменить настройки — /settings."
     )
+    await send_unscheduled_message(msg, session, user)
 
 
 @router.callback_query(F.data == "summary:edit", StateFilter(Onboarding.summary))
