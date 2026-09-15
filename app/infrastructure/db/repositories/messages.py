@@ -44,6 +44,7 @@ class GeneratedMessageRepository:
         semantic_key: str,
         source: MessageSource,
         generated_at: datetime,
+        order_id: uuid.UUID | None = None,
         provider: str | None = None,
         model: str | None = None,
         prompt_version_id: uuid.UUID | None = None,
@@ -57,6 +58,7 @@ class GeneratedMessageRepository:
         message = GeneratedMessage(
             delivery_id=delivery_id,
             user_id=user_id,
+            order_id=order_id,
             text=text,
             type=message_type,
             theme=theme,

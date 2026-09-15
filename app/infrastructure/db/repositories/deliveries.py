@@ -47,6 +47,7 @@ class DeliveryRepository:
         local_delivery_date: date,
         planned_at_utc: datetime,
         idempotency_key: str,
+        order_id: uuid.UUID | None = None,
     ) -> tuple[Delivery, bool]:
         """Возвращает `(delivery, created)`. Идемпотентность держится на
         unique(user_id, local_delivery_date) в БД: SAVEPOINT ловит гонку,
@@ -60,6 +61,7 @@ class DeliveryRepository:
             async with self._session.begin_nested():
                 delivery = Delivery(
                     user_id=user_id,
+                    order_id=order_id,
                     schedule_id=schedule_id,
                     local_delivery_date=local_delivery_date,
                     planned_at_utc=planned_at_utc,

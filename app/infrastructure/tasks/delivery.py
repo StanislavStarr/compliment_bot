@@ -211,13 +211,15 @@ async def _generate_message(
     prompt_version_id = None
     if outcome.prompt_version:
         prompt_version = await PromptVersionRepository(session).get_or_create(
-            outcome.prompt_version, build_system_prompt()
+            outcome.prompt_version,
+            build_system_prompt(outcome.message_type),
         )
         prompt_version_id = prompt_version.id
 
     message = await generated_repo.create(
         delivery_id=delivery.id,
         user_id=user.id,
+        order_id=delivery.order_id,
         text=outcome.text,
         message_type=outcome.message_type,
         theme=outcome.theme,

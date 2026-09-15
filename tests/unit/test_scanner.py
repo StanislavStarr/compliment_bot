@@ -10,6 +10,7 @@ def _schedule(*, overdue: bool) -> MagicMock:
     schedule = MagicMock()
     schedule.id = uuid4()
     schedule.user_id = uuid4()
+    schedule.order_id = uuid4()
     schedule.timezone_name = "UTC"
     schedule.mode = ScheduleMode.EXACT
     schedule.exact_local_time = time(10, 0)

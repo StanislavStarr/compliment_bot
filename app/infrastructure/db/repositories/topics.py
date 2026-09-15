@@ -4,7 +4,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.topics.enums import MAX_ACTIVE_TOPICS_PER_USER
-from app.infrastructure.db.models.topics import Topic, UserTopic
+from app.infrastructure.db.models.topics import OrderTopic, Topic
 
 
 class TopicRepository:
@@ -20,22 +20,22 @@ class TopicRepository:
         return result.scalar_one_or_none()
 
 
-class UserTopicRepository:
+class OrderTopicRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def list_active_for_user(self, user_id: uuid.UUID) -> list[UserTopic]:
+    async def list_active_for_order(self, order_id: uuid.UUID) -> list[OrderTopic]:
         result = await self._session.execute(
-            select(UserTopic)
-            .where(UserTopic.user_id == user_id, UserTopic.is_active.is_(True))
-            .order_by(UserTopic.position)
+            select(OrderTopic)
+            .where(OrderTopic.order_id == order_id, OrderTopic.is_active.is_(True))
+            .order_by(OrderTopic.position)
         )
         return list(result.scalars().all())
 
-    async def replace_for_user(self, user_id: uuid.UUID, topic_ids: list[uuid.UUID]) -> None:
+    async def replace_for_order(self, order_id: uuid.UUID, topic_ids: list[uuid.UUID]) -> None:
         if len(topic_ids) > MAX_ACTIVE_TOPICS_PER_USER:
-            raise ValueError(f"Максимум {MAX_ACTIVE_TOPICS_PER_USER} активных тем на пользователя")
-        await self._session.execute(delete(UserTopic).where(UserTopic.user_id == user_id))
+            raise ValueError(f"Максимум {MAX_ACTIVE_TOPICS_PER_USER} активных тем на заказ")
+        await self._session.execute(delete(OrderTopic).where(OrderTopic.order_id == order_id))
         for position, topic_id in enumerate(topic_ids):
-            self._session.add(UserTopic(user_id=user_id, topic_id=topic_id, position=position))
+            self._session.add(OrderTopic(order_id=order_id, topic_id=topic_id, position=position))
         await self._session.flush()

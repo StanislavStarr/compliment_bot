@@ -32,6 +32,9 @@ class GeneratedMessage(Base, UUIDPkMixin):
     user_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
+    order_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE")
+    )
 
     text: Mapped[str | None] = mapped_column(Text)
     type: Mapped[MessageType] = mapped_column(

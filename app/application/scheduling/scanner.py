@@ -47,6 +47,7 @@ async def collect_due_delivery_ids(
             local_delivery_date=planned_local_date,
             planned_at_utc=schedule.next_run_at_utc,
             idempotency_key=delivery_idempotency_key(schedule.user_id, planned_local_date),
+            order_id=schedule.order_id,
         )
         if created:
             to_enqueue.append(str(delivery.id))

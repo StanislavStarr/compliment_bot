@@ -9,7 +9,7 @@ from app.infrastructure.db.session import get_session_factory
 
 class DbSessionMiddleware(BaseMiddleware):
     """Открывает одну AsyncSession на апдейт и кладёт её в data["session"].
-    Хендлеры сами решают, когда коммитить (через OnboardingService)."""
+    Хендлеры сами решают, когда коммитить (через сервисы приложения)."""
 
     async def __call__(
         self,

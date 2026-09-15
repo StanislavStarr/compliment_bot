@@ -3,7 +3,12 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.users.enums import UserStatus
+from app.domain.users.enums import (
+    AuthorOnboardingStep,
+    RecipientOnboardingStep,
+    UserRole,
+    UserStatus,
+)
 from app.infrastructure.db.models.users import User
 
 
@@ -20,8 +25,24 @@ class UserRepository:
         )
         return result.scalar_one_or_none()
 
-    async def create(self, telegram_user_id: int, telegram_chat_id: int) -> User:
-        user = User(telegram_user_id=telegram_user_id, telegram_chat_id=telegram_chat_id)
+    async def create(
+        self,
+        telegram_user_id: int,
+        telegram_chat_id: int,
+        *,
+        telegram_username: str | None = None,
+        role: UserRole | None = None,
+        author_step: AuthorOnboardingStep | None = None,
+        recipient_step: RecipientOnboardingStep | None = None,
+    ) -> User:
+        user = User(
+            telegram_user_id=telegram_user_id,
+            telegram_chat_id=telegram_chat_id,
+            telegram_username=telegram_username,
+            role=role,
+            author_step=author_step,
+            recipient_step=recipient_step,
+        )
         self._session.add(user)
         await self._session.flush()
         return user

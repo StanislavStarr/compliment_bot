@@ -8,16 +8,19 @@ import redis
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.application.onboarding.service import OnboardingService
+from app.application.author_onboarding.service import AuthorOnboardingService
 from app.application.scheduling.scanner import collect_due_delivery_ids
 from app.application.settings.service import SettingsService
 from app.config import get_settings
+from app.domain.messages.enums import MessageType
 from app.domain.schedules.enums import DeliveryStatus, ScheduleMode
-from app.domain.users.enums import AddressMode, OnboardingStep, UserStatus
+from app.domain.users.enums import AddressMode, AuthorOnboardingStep, UserStatus
 from app.infrastructure.ai.base import AIGenerationResult, GenerationRequest
 from app.infrastructure.db.models.deliveries import Delivery
 from app.infrastructure.db.models.messages import GeneratedMessage
+from app.infrastructure.db.repositories.schedules import ScheduleRepository
 from app.infrastructure.db.repositories.topics import TopicRepository
+from app.infrastructure.db.repositories.users import UserRepository
 from app.infrastructure.db.session import get_session_factory
 from app.infrastructure.tasks.delivery import _deliver_message
 
@@ -66,7 +69,7 @@ def _redis_or_skip() -> None:
 async def test_due_scan_delivers_once_and_delete_cascades() -> None:
     _redis_or_skip()
     session = await _session_or_skip()
-    onboarding = OnboardingService(session)
+    onboarding = AuthorOnboardingService(session)
     user = None
     try:
         existing = await onboarding.users.get_by_telegram_id(TEST_TELEGRAM_USER_ID)
@@ -75,19 +78,22 @@ async def test_due_scan_delivers_once_and_delete_cascades() -> None:
             await session.commit()
 
         user = await onboarding.get_or_create_user(TEST_TELEGRAM_USER_ID, TEST_TELEGRAM_CHAT_ID)
-        user.address_mode = AddressMode.INFORMAL
         user.status = UserStatus.ACTIVE
-        user.onboarding_step = OnboardingStep.DONE
+        user.author_step = AuthorOnboardingStep.DONE
+        order = await onboarding.draft_order(user)
+        order.address_mode = AddressMode.INFORMAL
+        order.message_type = MessageType.COMPLIMENT
         topics = await TopicRepository(session).list_all()
         if not topics:
             pytest.skip("каталог тем пуст — нужны миграции с seed")
-        await onboarding.user_topics.replace_for_user(user.id, [topics[0].id])
-        await onboarding.schedules.upsert(
+        await onboarding.order_topics.replace_for_order(order.id, [topics[0].id])
+        await ScheduleRepository(session).upsert(
             user_id=user.id,
             mode=ScheduleMode.EXACT,
             timezone_name="UTC",
             next_run_at_utc=datetime(2026, 8, 22, 10, 0, tzinfo=UTC),
             exact_local_time=time(10, 0),
+            order_id=order.id,
         )
         await session.commit()
 
@@ -149,6 +155,6 @@ async def test_due_scan_delivers_once_and_delete_cascades() -> None:
         assert leftover_messages.scalar_one() == 0
     finally:
         if user is not None:
-            await OnboardingService(session).users.delete(user)
+            await UserRepository(session).delete(user)
             await session.commit()
         await session.close()

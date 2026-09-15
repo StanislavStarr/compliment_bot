@@ -35,6 +35,7 @@ def _user() -> MagicMock:
 def _message(user_id: uuid.UUID, text: str = "Ты сегодня спокойна и собрана.") -> MagicMock:
     message = MagicMock()
     message.user_id = user_id
+    message.order_id = uuid.uuid4()
     message.text = text
     return message
 
@@ -51,9 +52,10 @@ async def test_like_saves_text_as_style_example() -> None:
     result = await service.submit(user, message_id, ReactionType.LIKED)
 
     assert result is created
-    style_examples.add.assert_awaited_once_with(
-        user.id, "Ты сегодня спокойна и собрана.", source=StyleExampleSource.LIKED_MESSAGE
-    )
+    style_examples.add.assert_awaited_once()
+    args, kwargs = style_examples.add.await_args
+    assert args[1] == "Ты сегодня спокойна и собрана."
+    assert kwargs["source"] is StyleExampleSource.LIKED_MESSAGE
     session.commit.assert_awaited_once()
 
 

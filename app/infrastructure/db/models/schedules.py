@@ -18,6 +18,11 @@ class Schedule(Base, UUIDPkMixin, TimestampMixin):
         unique=True,
         nullable=False,
     )
+    order_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("orders.id", ondelete="CASCADE"),
+        unique=True,
+    )
 
     mode: Mapped[ScheduleMode] = mapped_column(
         Enum(ScheduleMode, name="schedule_mode"), nullable=False

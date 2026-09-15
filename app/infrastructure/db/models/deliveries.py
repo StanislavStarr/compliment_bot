@@ -23,6 +23,9 @@ class Delivery(Base, UUIDPkMixin, TimestampMixin):
     user_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
+    order_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE")
+    )
     schedule_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("schedules.id", ondelete="CASCADE"), nullable=False
     )

@@ -31,11 +31,11 @@ class Quality(Base, UUIDPkMixin):
     label: Mapped[str] = mapped_column(String(255), nullable=False)
 
 
-class UserQuality(Base, UUIDPkMixin, TimestampMixin):
-    __tablename__ = "user_qualities"
+class OrderQuality(Base, UUIDPkMixin, TimestampMixin):
+    __tablename__ = "order_qualities"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE"), nullable=False
     )
     quality_id: Mapped[uuid.UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("qualities.id", ondelete="RESTRICT"), nullable=True
@@ -48,8 +48,8 @@ class UserQuality(Base, UUIDPkMixin, TimestampMixin):
 class SupportPreference(Base, UUIDPkMixin, TimestampMixin):
     __tablename__ = "support_preferences"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE"), nullable=False
     )
     preference_code: Mapped[str | None] = mapped_column(String(64))
     custom_text: Mapped[str | None] = mapped_column(Text)
@@ -63,8 +63,8 @@ class BlockedTopic(Base, UUIDPkMixin, TimestampMixin):
 
     __tablename__ = "blocked_topics"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE"), nullable=False
     )
     topic_code: Mapped[str | None] = mapped_column(String(64))
     custom_text: Mapped[str | None] = mapped_column(Text)
@@ -74,8 +74,8 @@ class BlockedTopic(Base, UUIDPkMixin, TimestampMixin):
 class StyleExample(Base, UUIDPkMixin):
     __tablename__ = "style_examples"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE"), nullable=False
     )
     text: Mapped[str] = mapped_column(Text, nullable=False)
     source: Mapped[StyleExampleSource] = mapped_column(
@@ -88,7 +88,7 @@ class StyleExample(Base, UUIDPkMixin):
 __all__ = [
     "Profile",
     "Quality",
-    "UserQuality",
+    "OrderQuality",
     "SupportPreference",
     "BlockedTopic",
     "StyleExample",
