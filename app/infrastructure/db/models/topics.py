@@ -17,12 +17,12 @@ class Topic(Base, UUIDPkMixin):
     label: Mapped[str] = mapped_column(String(255), nullable=False)
 
 
-class UserTopic(Base, UUIDPkMixin, TimestampMixin):
-    __tablename__ = "user_topics"
-    __table_args__ = (UniqueConstraint("user_id", "topic_id", name="uq_user_topics_user_topic"),)
+class OrderTopic(Base, UUIDPkMixin, TimestampMixin):
+    __tablename__ = "order_topics"
+    __table_args__ = (UniqueConstraint("order_id", "topic_id", name="uq_order_topics_order_topic"),)
 
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE"), nullable=False
     )
     topic_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("topics.id", ondelete="RESTRICT"), nullable=False
@@ -31,4 +31,4 @@ class UserTopic(Base, UUIDPkMixin, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
-__all__ = ["Topic", "UserTopic"]
+__all__ = ["Topic", "OrderTopic"]

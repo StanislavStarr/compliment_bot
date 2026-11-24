@@ -2,7 +2,7 @@
 т.к. это не категориальные значения, а пороги/версии, которые могут меняться
 чаще (например, при подборе промпта — см. раздел 13 продуктового плана)."""
 
-CURRENT_PROMPT_VERSION = "v1"
+CURRENT_PROMPT_VERSION = "v2"
 
 MIN_MESSAGE_LENGTH = 80
 MAX_MESSAGE_LENGTH = 250

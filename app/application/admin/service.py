@@ -56,6 +56,7 @@ class ManualDeliveryService:
             local_delivery_date=local_date,
             planned_at_utc=now,
             idempotency_key=f"manual:{user.id}:{local_date.isoformat()}",
+            order_id=schedule.order_id,
         )
         if not created:
             raise ManualDeliveryError("не удалось зарезервировать тестовый слот, повторите")
@@ -73,13 +74,15 @@ class ManualDeliveryService:
         prompt_version_id = None
         if outcome.prompt_version:
             prompt_version = await self.prompt_versions.get_or_create(
-                outcome.prompt_version, build_system_prompt()
+                outcome.prompt_version,
+                build_system_prompt(outcome.message_type),
             )
             prompt_version_id = prompt_version.id
 
         message = await self.messages.create(
             delivery_id=delivery.id,
             user_id=user.id,
+            order_id=delivery.order_id,
             text=outcome.text,
             message_type=outcome.message_type,
             theme=outcome.theme,

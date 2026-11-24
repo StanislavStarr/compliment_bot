@@ -9,9 +9,9 @@ from app.application.feedback.service import (
     FeedbackNotFoundError,
     FeedbackService,
 )
-from app.application.onboarding.service import OnboardingService
 from app.domain.feedback.enums import ReactionType
 from app.infrastructure.db.models.users import User
+from app.infrastructure.db.repositories.users import UserRepository
 from app.infrastructure.telegram.keyboards.feedback import dislike_reasons_keyboard
 
 router = Router(name="feedback")
@@ -29,7 +29,7 @@ def _message_id(token: str) -> uuid.UUID:
 
 async def _user_or_none(callback: CallbackQuery, session: AsyncSession) -> User | None:
     assert callback.from_user is not None
-    return await OnboardingService(session).users.get_by_telegram_id(callback.from_user.id)
+    return await UserRepository(session).get_by_telegram_id(callback.from_user.id)
 
 
 def _cb_message(callback: CallbackQuery) -> Message | None:

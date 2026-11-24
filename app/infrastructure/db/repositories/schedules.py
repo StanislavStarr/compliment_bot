@@ -24,6 +24,7 @@ class ScheduleRepository:
         next_run_at_utc: datetime,
         exact_local_time: time | None = None,
         period: Period | None = None,
+        order_id: uuid.UUID | None = None,
     ) -> Schedule:
         schedule = await self.get_by_user_id(user_id)
         if schedule is None:
@@ -37,6 +38,8 @@ class ScheduleRepository:
         schedule.next_run_at_utc = next_run_at_utc
         schedule.is_active = True
         schedule.paused_at = None
+        if order_id is not None:
+            schedule.order_id = order_id
 
         await self._session.flush()
         return schedule

@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.messages.constants import (
-    CURRENT_PROMPT_VERSION,
     MAX_LIKED_EXAMPLES_IN_PROMPT,
     MAX_RECENT_MESSAGES_IN_PROMPT,
     MAX_REFERENCE_EXAMPLES_IN_PROMPT,
@@ -20,17 +19,20 @@ from app.infrastructure.ai.base import (
     RecentMessageContext,
     ReferenceExample,
 )
+from app.infrastructure.ai.prompts.builder import prompt_version_for
 from app.infrastructure.ai.validators.duplicate_checker import find_duplicate_reason
 from app.infrastructure.ai.validators.message_validator import validate_message
+from app.infrastructure.db.models.orders import Order
 from app.infrastructure.db.models.users import User
 from app.infrastructure.db.repositories.blocked_topics import BlockedTopicRepository
 from app.infrastructure.db.repositories.fallback_messages import FallbackMessageRepository
 from app.infrastructure.db.repositories.feedback import FeedbackRepository
 from app.infrastructure.db.repositories.messages import GeneratedMessageRepository
-from app.infrastructure.db.repositories.qualities import QualityRepository, UserQualityRepository
+from app.infrastructure.db.repositories.orders import OrderRepository
+from app.infrastructure.db.repositories.qualities import OrderQualityRepository, QualityRepository
 from app.infrastructure.db.repositories.style_examples import StyleExampleRepository
 from app.infrastructure.db.repositories.support_preferences import SupportPreferenceRepository
-from app.infrastructure.db.repositories.topics import TopicRepository, UserTopicRepository
+from app.infrastructure.db.repositories.topics import OrderTopicRepository, TopicRepository
 
 
 class GenerationError(Exception):
@@ -56,7 +58,7 @@ class GenerationOutcome:
 
 
 class GenerationService:
-    """Оркестрация pipeline: выбор темы/типа, сбор
+    """Оркестрация pipeline: тип из заказа, тема round-robin, сбор
     обезличенного контекста, вызов провайдера, локальная валидация, защита
     от повторов, один повтор при нарушении, fallback при исчерпании попыток.
 
@@ -65,10 +67,11 @@ class GenerationService:
 
     def __init__(self, session: AsyncSession, provider: AIProvider) -> None:
         self._provider = provider
+        self.orders = OrderRepository(session)
         self.topics = TopicRepository(session)
-        self.user_topics = UserTopicRepository(session)
+        self.order_topics = OrderTopicRepository(session)
         self.qualities = QualityRepository(session)
-        self.user_qualities = UserQualityRepository(session)
+        self.order_qualities = OrderQualityRepository(session)
         self.support_preferences = SupportPreferenceRepository(session)
         self.blocked_topics = BlockedTopicRepository(session)
         self.style_examples = StyleExampleRepository(session)
@@ -84,7 +87,7 @@ class GenerationService:
         Delivery-таск (Этап 5) вызывает `generate_via_ai_or_raise` и
         `generate_fallback_only` по отдельности, чтобы техническая ошибка
         провайдера могла ретраиться на уровне Celery, а не тонуть здесь.
-        `message_type` задаёт жанр вручную; `None` — чередование как в доставке."""
+        `message_type` задаёт жанр вручную; `None` — тип из заказа."""
         try:
             return await self.generate_via_ai_or_raise(user, message_type=message_type)
         except AIProviderError:
@@ -120,7 +123,7 @@ class GenerationService:
             input_tokens=result.input_tokens,
             output_tokens=result.output_tokens,
             total_tokens=result.total_tokens,
-            prompt_version=CURRENT_PROMPT_VERSION,
+            prompt_version=prompt_version_for(result.message_type),
             validation_status="ok",
         )
 
@@ -144,13 +147,21 @@ class GenerationService:
             problems.append(duplicate_reason)
         return problems
 
+    async def _resolve_order(self, user: User) -> Order:
+        order = await self.orders.get_for_generation(user.id)
+        if order is None:
+            raise GenerationError("нет заказа для генерации")
+        return order
+
     async def _build_request(
         self, user: User, message_type: MessageType | None = None
     ) -> tuple[GenerationRequest, list[RecentMessageContext]]:
-        topic_code, topic_label, selected_type = await self._select_topic_and_type(user)
-        if message_type is not None:
-            selected_type = message_type
-        address_mode = user.address_mode or AddressMode.INFORMAL
+        order = await self._resolve_order(user)
+        if order.message_type is None:
+            raise GenerationError("у заказа не задан тип сообщений")
+        selected_type = message_type or order.message_type
+        topic_code, topic_label = await self._select_topic(user, order)
+        address_mode = order.address_mode or AddressMode.INFORMAL
 
         recent_rows = await self.generated_messages.list_recent_for_user(user.id)
         recent_messages = [
@@ -160,7 +171,7 @@ class GenerationService:
         ][:MAX_RECENT_MESSAGES_IN_PROMPT]
 
         style_examples = [
-            example.text for example in await self.style_examples.list_active_for_user(user.id)
+            example.text for example in await self.style_examples.list_active_for_order(order.id)
         ][:MAX_LIKED_EXAMPLES_IN_PROMPT]
 
         reference_rows = await self.fallback_messages.list_active_for(
@@ -176,9 +187,9 @@ class GenerationService:
             message_type=selected_type,
             topic_code=topic_code,
             topic_label=topic_label,
-            qualities=await self._load_quality_labels(user),
-            support_preferences=await self._load_support_labels(user),
-            blocked_topic_labels=await self._load_blocked_labels(user),
+            qualities=await self._load_quality_labels(order),
+            support_preferences=await self._load_support_labels(order),
+            blocked_topic_labels=await self._load_blocked_labels(order),
             style_examples=style_examples,
             reference_examples=reference_examples,
             recent_messages=recent_messages,
@@ -186,14 +197,12 @@ class GenerationService:
         )
         return request, recent_messages
 
-    async def _select_topic_and_type(self, user: User) -> tuple[str, str, MessageType]:
-        """Тема — round-robin по порядку выбора в онбординге, тип чередуется
-        compliment/support. Состояние не хранится отдельным полем, а
-        выводится из последнего `GeneratedMessage` пользователя — проще, чем
-        отдельная колонка, и не теряется, пока есть история сообщений."""
-        active_topics = await self.user_topics.list_active_for_user(user.id)
+    async def _select_topic(self, user: User, order: Order) -> tuple[str, str]:
+        """Тема — round-robin по порядку выбора в анкете. Тип сообщений
+        фиксирован заказом и сюда не входит."""
+        active_topics = await self.order_topics.list_active_for_order(order.id)
         if not active_topics:
-            raise GenerationError("у пользователя нет активных тем")
+            raise GenerationError("у заказа нет активных тем")
 
         topics_catalog = await self.topics.list_all()
         label_by_code = {t.code: t.label for t in topics_catalog}
@@ -202,30 +211,21 @@ class GenerationService:
             code_by_id[ut.topic_id] for ut in active_topics if ut.topic_id in code_by_id
         ]
         if not ordered_codes:
-            raise GenerationError("активные темы пользователя отсутствуют в каталоге")
+            raise GenerationError("активные темы заказа отсутствуют в каталоге")
 
         last = await self.generated_messages.get_last_for_user(user.id)
-        if last is None:
+        if last is None or last.theme not in ordered_codes:
             topic_code = ordered_codes[0]
-            message_type = random.choice(list(MessageType))
         else:
-            if last.theme in ordered_codes:
-                next_index = (ordered_codes.index(last.theme) + 1) % len(ordered_codes)
-                topic_code = ordered_codes[next_index]
-            else:
-                topic_code = ordered_codes[0]
-            message_type = (
-                MessageType.SUPPORT
-                if last.type == MessageType.COMPLIMENT
-                else MessageType.COMPLIMENT
-            )
+            next_index = (ordered_codes.index(last.theme) + 1) % len(ordered_codes)
+            topic_code = ordered_codes[next_index]
 
-        return topic_code, label_by_code[topic_code], message_type
+        return topic_code, label_by_code[topic_code]
 
-    async def _load_quality_labels(self, user: User) -> list[str]:
+    async def _load_quality_labels(self, order: Order) -> list[str]:
         catalog = {q.id: q.label for q in await self.qualities.list_all()}
         labels = []
-        for uq in await self.user_qualities.list_for_user(user.id):
+        for uq in await self.order_qualities.list_for_order(order.id):
             if uq.excluded_from_generation:
                 continue
             if uq.quality_id is not None:
@@ -234,10 +234,10 @@ class GenerationService:
                 labels.append(uq.custom_text)
         return labels
 
-    async def _load_support_labels(self, user: User) -> list[str]:
+    async def _load_support_labels(self, order: Order) -> list[str]:
         catalog = dict(SUPPORT_PREFERENCE_OPTIONS)
         labels = []
-        for sp in await self.support_preferences.list_for_user(user.id):
+        for sp in await self.support_preferences.list_for_order(order.id):
             if sp.excluded_from_generation:
                 continue
             if sp.preference_code is not None:
@@ -246,10 +246,10 @@ class GenerationService:
                 labels.append(sp.custom_text)
         return labels
 
-    async def _load_blocked_labels(self, user: User) -> list[str]:
+    async def _load_blocked_labels(self, order: Order) -> list[str]:
         topics_catalog = {t.code: t.label for t in await self.topics.list_all()}
         labels = []
-        for bt in await self.blocked_topics.list_for_user(user.id):
+        for bt in await self.blocked_topics.list_for_order(order.id):
             if bt.topic_code is not None:
                 labels.append(topics_catalog.get(bt.topic_code, bt.topic_code))
             elif bt.custom_text:

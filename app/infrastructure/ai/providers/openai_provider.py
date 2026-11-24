@@ -17,7 +17,7 @@ class OpenAIProvider:
         try:
             response = await self._client.responses.parse(
                 model=self._model,
-                instructions=build_system_prompt(),
+                instructions=build_system_prompt(request.message_type),
                 input=build_user_input(request),
                 text_format=AIMessageSchema,
                 temperature=0.9,

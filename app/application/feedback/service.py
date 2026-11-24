@@ -55,9 +55,9 @@ class FeedbackService:
             reason_code=reason_code,
             comment=comment,
         )
-        if reaction is ReactionType.LIKED and message.text:
+        if reaction is ReactionType.LIKED and message.text and message.order_id is not None:
             await self.style_examples.add(
-                user.id, message.text, source=StyleExampleSource.LIKED_MESSAGE
+                message.order_id, message.text, source=StyleExampleSource.LIKED_MESSAGE
             )
         await self._session.commit()
         return record
