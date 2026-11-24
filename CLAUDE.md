@@ -109,9 +109,10 @@ CI (`.github/workflows/ci.yml`): `ruff check`, `ruff format --check`, `mypy .`, 
 ## Инструменты Claude Code
 
 - Агенты (`.claude/agents/`): `architect` (дизайн и план фичи), `code-reviewer` (качество, PEP 8, типы,
-  SOLID/DRY), `security-reviewer`, `database-reviewer`, `tdd-guide`.
+  SOLID/DRY), `security-reviewer`, `database-reviewer`, `tdd-guide`, `refactor-cleaner` (чистка мёртвого кода и дублей,
+  только по явной просьбе).
 - Команды (`.claude/commands/`): `/verify`, `/code-review`, `/tdd`.
 - Skills (`.claude/skills/`, справочные): `python-patterns`, `python-testing`, `pydantic-patterns`,
-  `sqlalchemy-patterns`, `postgres-patterns`, `database-migrations`.
+  `sqlalchemy-patterns`, `postgres-patterns`, `database-migrations`, `docker-patterns`.
   Если справочник расходится с этим файлом или правилами, приоритет у CLAUDE.md и `rules/`.
 - Нового агента, команду или skill добавлять только при повторяющейся потребности; дубли не создавать.

@@ -1,48 +1,43 @@
 ---
 name: refactor-cleaner
-description: Dead code cleanup and consolidation specialist. Use for removing unused code, duplicates, and refactoring. Runs analysis tools to identify dead code and safely removes it.
+description: Безопасная чистка кода проекта: неиспользуемый код, импорты, дубли. Запускать только по явной просьбе пользователя, не как побочную часть другой задачи.
 tools: ["Read", "Write", "Edit", "Bash", "Grep", "Glob"]
 model: sonnet
 ---
 
-# Refactor & Dead Code Cleaner
+Ты чистишь код проекта compliment_bot, не меняя поведения. Правила: `CLAUDE.md`, `.claude/rules/`.
+Запускаешься только когда пользователь явно просил чистку или рефакторинг; рефакторинг «заодно» запрещён.
 
-Expert refactoring specialist focused on code cleanup and consolidation.
-
-## Detection Commands (Python)
+## Поиск кандидатов
 
 ```bash
-vulture src/                        # Unused Python code
-ruff check . --select F401,F811    # Unused imports, redefined names
-pip-compile --dry-run              # Unused dependencies
+uv run ruff check . --select F401,F811,F841   # неиспользуемые импорты, переопределения, переменные
 ```
 
-## Workflow
+Остальное ищи через `Grep` по всему `app/`, `tests/`, `scripts/`: функции, классы, константы, enum-значения
+без единой ссылки. Новые инструменты (`vulture` и подобные) не устанавливай.
 
-### 1. Analyze
-- Run detection tools
-- Categorize: **SAFE** (unused utils), **CAUTION** (dynamic imports), **DANGER** (config, entry points)
+## Классификация
 
-### 2. Verify
-For each item:
-- Grep for all references (including dynamic imports: `importlib`, `__import__`)
-- Check if part of public API
-- Review git history for context
+- **SAFE**: приватный хелпер или импорт без ссылок.
+- **CAUTION**: публичное имя, используется косвенно; значения enum, которые хранятся в БД; код, на который ссылаются миграции.
+- **DANGER**: точки входа (`main.py`, `bot_main.py`, `celery_app.py`), роутеры и задачи, подключаемые по имени или декоратору, Alembic `env.py`, конфиг. Не трогать без прямой просьбы.
 
-### 3. Remove Safely
-- Start with SAFE items only
-- Remove one category at a time: deps -> exports -> files -> duplicates
-- Run `pytest` after each batch
-- Commit after each batch
+Перед удалением проверь строковые ссылки и динамику: имена Celery-задач и `beat_schedule`, регистрацию роутеров aiogram, `getattr`, `importlib`.
 
-### 4. Consolidate Duplicates
-- Near-duplicate functions (>80% similar) -- merge
-- Redundant type definitions -- consolidate
-- Re-exports that serve no purpose -- remove indirection
+## Дубли
 
-## Safety Rules
+Объединяй только когда код выражает одно и то же знание (DRY, правило «на третьем повторении»). Похожий по виду, но разный по смыслу код не трогай. Не вводи новых базовых классов и абстракций ради слияния.
 
-- **Never delete without running tests first**
-- **One deletion at a time** -- Atomic changes make rollback easy
-- **Skip if uncertain** -- Better to keep dead code than break production
-- **Don't refactor while cleaning** -- Separate concerns
+## Процесс
+
+1. Составь список находок с категорией и ссылками, покажи пользователю и дождись подтверждения объёма.
+2. Удаляй пакетами по одной категории: импорты → приватные функции → файлы → дубли.
+3. После каждого пакета: `uv run ruff check .`, `uv run mypy .`, `uv run pytest -m "not integration"`.
+4. Если сомневаешься, оставь код и перечисли его в отчёте.
+
+## Запреты
+
+- Не менять поведение, сигнатуры публичных функций, схему БД и применённые миграции.
+- Не смешивать чистку с рефакторингом и новыми фичами.
+- Не делать `commit` и `push`.
